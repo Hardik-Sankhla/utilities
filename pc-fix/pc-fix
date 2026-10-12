@@ -1,0 +1,118 @@
+#!/bin/bash
+# pc-fix — One-command system optimization for Ubuntu
+# Usage: pc-fix [--dry-run] [--no-snap] [--no-update]
+
+set -euo pipefail
+
+DRY_RUN=false
+SKIP_SNAP=false
+SKIP_UPDATE=false
+
+for arg in "$@"; do
+    case $arg in
+        --dry-run) DRY_RUN=true ;;
+        --no-snap) SKIP_SNAP=true ;;
+        --no-update) SKIP_UPDATE=true ;;
+        --help)
+            cat << 'EOF'
+pc-fix — One-command Ubuntu optimization
+
+Usage: pc-fix [OPTIONS]
+    --dry-run     Show what would be done without executing
+    --no-snap     Skip snap cleanup
+    --no-update   Skip security updates
+    --help        Show this help
+
+Optimizations performed:
+  1. Security updates (apt upgrade --security-only)
+  2. Package cache cleanup (apt clean, autoclean, autoremove)
+  3. Journal vacuum (200 MB limit)
+  4. Disabled snap revision removal
+  5. fstrim.timer enable/verify (SSD TRIM)
+  6. VA-API verification (Intel hardware video decode)
+  7. mpv installation (native video player)
+  8. VLC snap desktop integration fix
+  9. Swappiness tuning (vm.swappiness=60 for zram)
+  10. Temp file cleanup
+  11. Disk health check (SMART)
+  12. Status summary
+EOF
+            exit 0
+            ;;
+    esac
+done
+
+run() {
+    if $DRY_RUN; then
+        echo "[DRY-RUN] $*"
+    else
+        eval "$@"
+    fi
+}
+
+echo "=== pc-fix: Ubuntu System Optimization ==="
+$DRY_RUN && echo "Mode: DRY RUN (no changes)"
+
+# 1. Security updates
+if ! $SKIP_UPDATE; then
+    echo "=== 1/12: Security Updates ==="
+    run "sudo apt update && sudo apt list --upgradable 2>/dev/null | grep -i security | cut -d'/' -f1 | xargs -r sudo apt install -y"
+else
+    echo "=== 1/12: Security Updates (SKIPPED) ==="
+fi
+
+# 2. Package cache
+echo "=== 2/12: Package Cache Cleanup ==="
+run "sudo apt clean && sudo apt autoclean && sudo apt autoremove -y"
+
+# 3. Journal
+echo "=== 3/12: Journal Vacuum (200 MB) ==="
+run "sudo journalctl --vacuum-size=200M"
+
+# 4. Snap cleanup
+if ! $SKIP_SNAP; then
+    echo "=== 4/12: Disabled Snap Revisions ==="
+    run "snap list --all | awk '/disabled/{print \$1, \$3}' | while read name rev; do sudo snap remove \"\$name\" --revision=\"\$rev\"; done"
+else
+    echo "=== 4/12: Snap Cleanup (SKIPPED) ==="
+fi
+
+# 5. fstrim
+echo "=== 5/12: fstrim.timer (SSD TRIM) ==="
+run "sudo systemctl enable --now fstrim.timer"
+run "sudo systemctl status fstrim.timer --no-pager | head -10"
+
+# 6. VA-API
+echo "=== 6/12: VA-API Verification ==="
+run "vainfo | grep -E 'VAProfile|VAEntrypoint' || echo 'VA-API not working - install intel-media-va-driver-non-free'"
+
+# 7. mpv
+echo "=== 7/12: mpv Installation ==="
+run "sudo apt install -y mpv"
+
+# 8. VLC snap
+echo "=== 8/12: VLC Snap Integration ==="
+run "sudo snap connect vlc:desktop-legacy 2>/dev/null || true"
+run "sudo snap connect vlc:wayland 2>/dev/null || true"
+
+# 9. Swappiness
+echo "=== 9/12: Swappiness Tuning ==="
+run "echo 'vm.swappiness=60' | sudo tee /etc/sysctl.d/99-swappiness.conf && sudo sysctl --system"
+
+# 10. Temp files
+echo "=== 10/12: Temp File Cleanup ==="
+run "sudo rm -rf /tmp/* /var/tmp/* 2>/dev/null || true"
+
+# 11. Disk health
+echo "=== 11/12: Disk Health (SMART) ==="
+run "sudo smartctl -H /dev/sda 2>/dev/null | grep -E 'PASSED|FAILED|result' || true"
+run "sudo smartctl -H /dev/nvme0 2>/dev/null | grep -E 'PASSED|FAILED|result' || true"
+
+# 12. Summary
+echo "=== 12/12: Status Summary ==="
+run "df -h /"
+run "journalctl --disk-usage"
+run "systemd-analyze time"
+run "free -h"
+
+echo "=== pc-fix complete ==="
