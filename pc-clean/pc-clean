@@ -1,0 +1,91 @@
+#!/bin/bash
+# pc-clean — Memory/cache cleanup for Ubuntu (safe, no snake oil)
+# Usage: pc-clean [--dry-run] [--aggressive] [--help]
+
+set -euo pipefail
+
+DRY_RUN=false
+AGGRESSIVE=false
+
+for arg in "$@"; do
+    case $arg in
+        --dry-run) DRY_RUN=true ;;
+        --aggressive) AGGRESSIVE=true ;;
+        --help)
+            cat << 'EOF'
+pc-clean — Safe memory/cache cleanup for Ubuntu
+
+Usage: pc-clean [OPTIONS]
+    --dry-run      Show what would be done
+    --aggressive   Also compact memory & drop slab (requires root)
+    --help         Show this help
+
+What it does (safe by default):
+  1. Sync filesystems (flush dirty pages)
+  2. Drop pagecache (clean pages only)
+  3. Drop dentries/inodes (clean only)
+  4. Show memory before/after
+
+Aggressive mode (--aggressive, requires sudo):
+  5. Compact memory (defragment)
+  6. Drop slab reclaimable
+  7. Trigger kswapd scan
+
+NOTES:
+- Linux manages memory well; this is for specific cases:
+  * Before heavy workload (VM, compile, game)
+  * After closing memory-hungry apps
+  * When "available" memory is low but "free" is high
+- Dropping caches temporarily SLOWS the system (re-read from disk)
+- Run without --aggressive first; only use --aggressive if needed
+EOF
+            exit 0
+            ;;
+    esac
+done
+
+run() {
+    if $DRY_RUN; then
+        echo "[DRY-RUN] $*"
+    else
+        eval "$@"
+    fi
+}
+
+echo "=== pc-clean: Memory/Cache Cleanup ==="
+$DRY_RUN && echo "Mode: DRY RUN"
+
+# Show memory before
+echo "=== Memory BEFORE ==="
+free -h
+
+# 1. Sync (always safe)
+echo "=== 1/4: Sync filesystems ==="
+run "sync"
+
+# 2. Drop pagecache (clean pages only - safe)
+echo "=== 2/4: Drop pagecache (clean pages) ==="
+run "echo 1 | sudo tee /proc/sys/vm/drop_caches > /dev/null"
+
+# 3. Drop dentries/inodes (clean only - safe)
+echo "=== 3/4: Drop dentries/inodes ==="
+run "echo 2 | sudo tee /proc/sys/vm/drop_caches > /dev/null"
+
+# 4. Aggressive: compact memory, drop slab
+if $AGGRESSIVE; then
+    echo "=== 4/4: Aggressive: compact memory, drop slab ==="
+    run "echo 1 | sudo tee /proc/sys/vm/compact_memory > /dev/null"
+    run "echo 3 | sudo tee /proc/sys/vm/drop_caches > /dev/null"
+else
+    echo "=== 4/4: Skipped aggressive mode (use --aggressive) ==="
+fi
+
+# Show memory after
+echo "=== Memory AFTER ==="
+free -h
+
+# Show available vs free (what matters)
+echo "=== Key Metric: Available Memory ==="
+free -h | awk 'NR==2 {print "Available: " $7 " (this is what matters for new apps)"}'
+
+echo "=== pc-clean complete ==="

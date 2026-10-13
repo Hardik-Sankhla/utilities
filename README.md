@@ -10,6 +10,10 @@ utilities/
 │   ├── pc-fix        # Main script
 │   ├── README.md     # pc-fix documentation
 │   └── CHANGELOG.md  # Version history
+├── pc-clean/         # Safe memory/cache cleanup
+│   ├── pc-clean      # Main script
+│   ├── README.md     # pc-clean documentation
+│   └── CHANGELOG.md  # Version history
 ├── <future-util-1>/  # Future utilities
 └── <future-util-2>/
 ```
@@ -19,15 +23,17 @@ utilities/
 ### Option 1: Symlink to ~/.local/bin (recommended)
 ```bash
 # Add to ~/.bashrc or ~/.zshrc
-export PATH="$HOME/.hermes/utilities/pc-fix:$PATH"
+export PATH="/mnt/Storage/Career/utilities/pc-fix:/mnt/Storage/Career/utilities/pc-clean:$PATH"
 
 # Or symlink individually
-ln -sf ~/.hermes/utilities/pc-fix/pc-fix ~/.local/bin/pc-fix
+ln -sf /mnt/Storage/Career/utilities/pc-fix/pc-fix ~/.local/bin/pc-fix
+ln -sf /mnt/Storage/Career/utilities/pc-clean/pc-clean ~/.local/bin/pc-clean
 ```
 
 ### Option 2: Source directly
 ```bash
-source ~/.hermes/utilities/pc-fix/pc-fix
+source /mnt/Storage/Career/utilities/pc-fix/pc-fix
+source /mnt/Storage/Career/utilities/pc-clean/pc-clean
 ```
 
 ## Utilities
@@ -55,6 +61,28 @@ pc-fix --no-update  # Skip security updates
 10. Temp file cleanup (`/tmp`, `/var/tmp`)
 11. Disk health check (SMART)
 12. Status summary (disk, journal, boot time, memory)
+
+### pc-clean
+Safe memory/cache cleanup — no snake oil, just kernel interfaces.
+
+```bash
+pc-clean              # Safe: sync + drop clean caches
+pc-clean --aggressive # Also compact memory + drop slab (sudo)
+pc-clean --dry-run    # Preview
+```
+
+**What it does (default):**
+1. `sync` — flush dirty pages to disk
+2. Drop clean pagecache (reclaimable)
+3. Drop clean dentries/inodes (reclaimable)
+4. Shows memory before/after with **available** focus
+
+**Aggressive mode (`--aggressive`):**
+5. Compact memory (defragment)
+6. Drop slab reclaimable
+
+**When to use:** Before heavy workload (VM, compile, game), after closing memory-hungry apps, when `available` memory is low.
+**When NOT:** Routine "speed up" — Linux caches for performance; dropping caches temporarily slows the system.
 
 ## Adding New Utilities
 
